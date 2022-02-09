@@ -53,6 +53,16 @@ public:
     void getStateInformation (juce::MemoryBlock& destData) override;
     void setStateInformation (const void* data, int sizeInBytes) override;
 
+    static juce::AudioProcessorValueTreeState::ParameterLayout createParameterLayout();
+
+        // declare the function for creating our Parameter Layout, static means it cannot be modified?
+
+    juce::AudioProcessorValueTreeState apvts{ *this, nullptr, "Parameters", createParameterLayout() };
+
+        // declare our AudioProcessorValueTreeState. It needs to be in the public section
+        // *this is this Audio Processor, nullptr because we aren't using an Undo method
+        // "Parameters" is the valueTreeType
+        // createParameterLayout() function is how we create the ParameterLayout, the function is in PluginProcessor.cpp
 private:
     //==============================================================================
     JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR (SimpleEQAudioProcessor)
