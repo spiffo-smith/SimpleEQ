@@ -53,7 +53,7 @@ struct RotarySliderWithLabels : juce::Slider
     // this is our function declaration for painting our Sliders
 
     juce::Rectangle<int> getSliderBounds() const;
-    int getTextHeight() const { return 10; }    // just returns 12 if the getTextHeight function is called
+    int getTextHeight() const { return 14; }    // just returns 12 if the getTextHeight function is called
     juce::String getDisplayString() const;
 
 private:
@@ -94,8 +94,11 @@ private:
 
     MonoChain monoChain;
     // adds an instance of the Mono Chain for use in displaying the Response Curve in real time!
+
+    void updateChain();
+    // declares an updateChain function
 };
-// declares a separate 'GUI Component' for the Response Curve
+// declares a Structure called ResponseCurveComponent which is a separate 'GUI Component' for the Response Curve
 
 //==============================================================================
 /**

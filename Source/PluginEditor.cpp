@@ -223,9 +223,12 @@ ResponseCurveComponent::ResponseCurveComponent(SimpleEQAudioProcessor& p) : audi
     }
     // loops around the vector 'params' and adds the Editor as a Listener for each one
 
+    updateChain();
+    // calls the updateChain function
     startTimerHz(60);
     // starts a 60Hz ticking timer!
 }
+// Constrcutor for the ResponseCurveComponent
 
 ResponseCurveComponent::~ResponseCurveComponent()
 {
@@ -251,23 +254,30 @@ void ResponseCurveComponent::timerCallback()
     if (parametersChanged.compareAndSetBool(false, true))
         // if 'parametersChanged is true set to false and run code below
     {
-        auto chainSettings = getChainSettings(audioProcessor.apvts);
-        // get the chain settings from the apvts
-        auto peakCoefficients = makePeakFilter(chainSettings, audioProcessor.getSampleRate());
-        // get the peakCoefficients
-        auto lowCutCoefficients = makeLowCutFilter(chainSettings, audioProcessor.getSampleRate());
-        // get the low cut coefficients
-        auto highCutCoefficients = makeHighCutFilter(chainSettings, audioProcessor.getSampleRate());
-        // get the high cut coefficients
-
-        updateCoefficients(monoChain.get<ChainPositions::Peak>().coefficients, peakCoefficients);
-        updateCutFilter(monoChain.get<ChainPositions::LowCut>(), lowCutCoefficients, chainSettings.lowCutSlope);
-        updateCutFilter(monoChain.get<ChainPositions::HighCut>(), highCutCoefficients, chainSettings.highCutSlope);
-        // update the monoChain
-
+        DBG("params changed");
+        // writes "params changed" to the standard error stream
+        updateChain();
+        // calls the updateChain function
         repaint();
         // signal a repaint
     }
+}
+
+void ResponseCurveComponent::updateChain()
+{
+    auto chainSettings = getChainSettings(audioProcessor.apvts);
+    // get the chain settings from the apvts
+    auto peakCoefficients = makePeakFilter(chainSettings, audioProcessor.getSampleRate());
+    // get the peakCoefficients
+    auto lowCutCoefficients = makeLowCutFilter(chainSettings, audioProcessor.getSampleRate());
+    // get the low cut coefficients
+    auto highCutCoefficients = makeHighCutFilter(chainSettings, audioProcessor.getSampleRate());
+    // get the high cut coefficients
+
+    updateCoefficients(monoChain.get<ChainPositions::Peak>().coefficients, peakCoefficients);
+    updateCutFilter(monoChain.get<ChainPositions::LowCut>(), lowCutCoefficients, chainSettings.lowCutSlope);
+    updateCutFilter(monoChain.get<ChainPositions::HighCut>(), highCutCoefficients, chainSettings.highCutSlope);
+    // update the monoChain
 }
 
 void ResponseCurveComponent::paint(juce::Graphics& g)
@@ -406,7 +416,7 @@ SimpleEQAudioProcessorEditor::SimpleEQAudioProcessorEditor(SimpleEQAudioProcesso
     }
     // for loop that calls the 'getComps' function, and adds and makes visible each component as it is returned from the vector
 
-    setSize (400, 300);
+    setSize (600, 480);
     // sets the overall size of the Plugin Window
 }
 
@@ -432,10 +442,16 @@ void SimpleEQAudioProcessorEditor::resized()
     // subcomponents in your editor..
 
     auto bounds = getLocalBounds();
-    auto responseArea = bounds.removeFromTop(bounds.getHeight() * 0.33);
-    // we are making 'bounds' equal to the whole GUI, then we are making 'responseArea' equal to the top third
+    float hRatio = 25.f / 100.f; // JUCE_LIVE_CONSTANT(33) / 100.f;
+    // hRatio is 0.25, if we delete '25.f / 100.f' and uncomment the JUCE_LIVE_CONSTANT we can dynamically change hRatio whilst the Plugin is running
+    auto responseArea = bounds.removeFromTop(bounds.getHeight() * hRatio);
+    // we are making 'bounds' equal to the whole GUI, then we are making 'responseArea' equal to it's total height * hRatio
 
     responseCurveComponent.setBounds(responseArea);
+
+    bounds.removeFromTop(5);
+    // removes 5 pixels from the top of bounds after we have already removed the responseArea from the top
+    // this puts a 5 pixel gap between bottom of responseArea and top of Sliders so it looks nicer
 
     auto lowCutArea = bounds.removeFromLeft(bounds.getWidth() * 0.33);
     auto highCutArea = bounds.removeFromRight(bounds.getWidth() * 0.5);
