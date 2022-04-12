@@ -100,13 +100,23 @@ void SimpleEQAudioProcessor::prepareToPlay (double sampleRate, int samplesPerBlo
     spec.maximumBlockSize = samplesPerBlock;
     spec.numChannels = 1;
     spec.sampleRate = sampleRate;
-    // This sets up a 'spec' for our Audio Processing
+    // prepares a 'spec' for our Audio Processing
 
     leftChain.prepare(spec);
     rightChain.prepare(spec);
-    // This sets up our Left & Right Channels with the correct 'spec'
+    // prepares our Left & Right Channels with the correct 'spec'
 
     updateFilters();
+
+    leftChannelFifo.prepare (samplesPerBlock);
+    rightChannelFifo.prepare (samplesPerBlock);
+    // prepares our 2 Spectrum Analyser Fifos
+
+    osc.initialise([](float x) {return std::sin(x); });
+    spec.numChannels = getTotalNumOutputChannels();
+    osc.prepare(spec);
+    osc.setFrequency(200);
+    // prepares our Test Oscillator
 }
 
 void SimpleEQAudioProcessor::releaseResources()
@@ -155,6 +165,15 @@ void SimpleEQAudioProcessor::processBlock (juce::AudioBuffer<float>& buffer, juc
 
     juce::dsp::AudioBlock<float> block(buffer);
 
+    /*
+    // Test Oscillator - clears the buffer, replaces the buffer with the Oscillator Output
+    // -----------------------------------------------------------------------------------
+    buffer.clear();
+    juce::dsp::ProcessContextReplacing<float> stereoContext(block);
+    osc.process(stereoContext);
+    // -----------------------------------------------------------------------------------
+    */
+
     auto leftBlock = block.getSingleChannelBlock(0);
     auto rightBlock = block.getSingleChannelBlock(1);
 
@@ -163,8 +182,11 @@ void SimpleEQAudioProcessor::processBlock (juce::AudioBuffer<float>& buffer, juc
 
     leftChain.process(leftContext);
     rightChain.process(rightContext);
+    // Above is the buffer and sample block replacing code
 
-   // Above is the buffer and sample block replacing code
+    leftChannelFifo.update(buffer);
+    rightChannelFifo.update(buffer);
+    // update our Spectrum Analyser Fifos with buffer
 }
 
 //==============================================================================
@@ -192,7 +214,7 @@ void SimpleEQAudioProcessor::getStateInformation (juce::MemoryBlock& destData)
     juce::MemoryOutputStream mos(destData, true);
     apvts.state.writeToStream(mos);
 
-    // 1st line creates a memory block called 'mos' with the 'destData' passed intot he function
+    // 1st line creates a memory block called 'mos' with the 'destData' passed into the function
     // 2nd line writes the current apvts into the memory block 'mos'
 }
 
@@ -211,6 +233,9 @@ void SimpleEQAudioProcessor::setStateInformation (const void* data, int sizeInBy
     // only is it passes the isValid test does the apvts get replaced with it and the filter coefficients updated
 }
 
+// The getChainSettings function creates a ChainSettings Structure called 'settings' & loads up all the raw parameter values into it
+// The lowCutSlope & highCutSlope have to be cast first from 0-3 into Slope_12, Slope_24, etc....
+//-----------------------------------------------------------------------------------------------
 ChainSettings getChainSettings(juce::AudioProcessorValueTreeState& apvts) {
 
     ChainSettings settings;
@@ -223,10 +248,13 @@ ChainSettings getChainSettings(juce::AudioProcessorValueTreeState& apvts) {
     settings.lowCutSlope = static_cast<Slope>(apvts.getRawParameterValue("LowCut Slope")->load());
     settings.highCutSlope = static_cast<Slope>(apvts.getRawParameterValue("HighCut Slope")->load());
 
+    //settings.lowCutBypassed = apvts.getRawParameterValue("LowCut Bypassed")->load() > 0.5f;
+    //settings.peakBypassed = apvts.getRawParameterValue("Peak Bypassed")->load() > 0.5f;
+    //settings.highCutBypassed = apvts.getRawParameterValue("HighCut Bypassed")->load() > 0.5f;
+    // retrieve the Bypass Button states. These booleans are stored as floats so if they are greater than 0.5 then they are true
+
     return settings;
 }
-// The getChainSettings function creates a ChainSettings Structure called 'settings' & loads up all the raw parameter values into it
-// The lowCutSlope & highCutSlope have to be cast first from 0-3 into Slope_12, Slope_24, etc....
 
 Coefficients makePeakFilter(const ChainSettings& chainSettings, double sampleRate)
 {
@@ -239,46 +267,64 @@ Coefficients makePeakFilter(const ChainSettings& chainSettings, double sampleRat
         // the last 'gain' setting needs to be converted from our decibel figure
 }
 
+// the function for updating the Peak Filter coefficients
+//-------------------------------------------------------
 void SimpleEQAudioProcessor::updatePeakFilter(const ChainSettings& chainSettings)
 {
     auto peakCoefficients = makePeakFilter(chainSettings, getSampleRate());
     // makes the peakCoefficients by calling the makePeakFilter function above
 
+    //leftChain.setBypassed<ChainPositions::Peak>(chainSettings.peakBypassed);
+    //rightChain.setBypassed<ChainPositions::Peak>(chainSettings.peakBypassed);
+    // update our left & right chains with the Bypass Setting
+
     updateCoefficients(leftChain.get<ChainPositions::Peak>().coefficients, peakCoefficients);
     updateCoefficients(rightChain.get<ChainPositions::Peak>().coefficients, peakCoefficients);
    // calls the 'updateCoefficients' function, passes in the old and the new coeffcients
 }
-// Above is the function for updating the Peak Filter coefficients
 
+// function for updating filter coefficients, references to the Coefficients are passed in as old and replacements
+//----------------------------------------------------------------------------------------------------------------
 void updateCoefficients(Coefficients& old, Coefficients& replacements)
 {
     *old = *replacements;
 }
-// function for updating filter coefficients, references to the Coefficients are passed in as old and replacements
 
+// function definition for updating the Low Cut Filter
+// ---------------------------------------------------
 void SimpleEQAudioProcessor::updateLowCutFilters(const ChainSettings& chainSettings)
 {
     auto cutCoefficients = makeLowCutFilter(chainSettings, getSampleRate());
     // calls the helper function 'makeLowCutFilter' defined in PluginProcessor.h to return our Low Cut Filter Coefficients
-
     auto& leftLowCut = leftChain.get<ChainPositions::LowCut>();
     // creates a variable reference called 'leftLowCut' which is the 'leftChain' 1st position (position 0 from the chainPositions enum)
+    auto& rightLowCut = rightChain.get<ChainPositions::LowCut>();
+    // does the same for the right chain
+
+    //leftChain.setBypassed<ChainPositions::LowCut>(chainSettings.lowCutBypassed);
+    //rightChain.setBypassed<ChainPositions::LowCut>(chainSettings.lowCutBypassed);
+    // sets the left & right chains bypass state
+
     updateCutFilter(leftLowCut, cutCoefficients, chainSettings.lowCutSlope);
     // calls the update Cut Filter function, passing in the left chain
-
-    auto& rightLowCut = rightChain.get<ChainPositions::LowCut>();
     updateCutFilter(rightLowCut, cutCoefficients, chainSettings.lowCutSlope);
     // does the same stuff for the right chain
 }
 
+// function definition for updating the High Cut Filter
+// ----------------------------------------------------
 void SimpleEQAudioProcessor::updateHighCutFilters(const ChainSettings& chainSettings)
 {
     auto highCutCoefficients = makeHighCutFilter(chainSettings, getSampleRate());
 
     auto& leftHighCut = leftChain.get<ChainPositions::HighCut>();
-    updateCutFilter(leftHighCut, highCutCoefficients, chainSettings.highCutSlope);
-
     auto& rightHighCut = rightChain.get<ChainPositions::HighCut>();
+
+    //leftChain.setBypassed<ChainPositions::HighCut>(chainSettings.highCutBypassed);
+    //rightChain.setBypassed<ChainPositions::HighCut>(chainSettings.highCutBypassed);
+    // sets the left & right chains bypass state
+
+    updateCutFilter(leftHighCut, highCutCoefficients, chainSettings.highCutSlope);
     updateCutFilter(rightHighCut, highCutCoefficients, chainSettings.highCutSlope);
     // above is all the same code but for the High Cut Filter
 }
@@ -337,16 +383,18 @@ juce::AudioProcessorValueTreeState::ParameterLayout SimpleEQAudioProcessor::crea
 
     layout.add(std::make_unique<juce::AudioParameterChoice>("LowCut Slope", "LowCut Slope", stringArray, 0));
     layout.add(std::make_unique<juce::AudioParameterChoice>("HighCut Slope", "HighCut Slope", stringArray, 0));
-
     // now we have created our stringArray we can use it when we create the 2 AudioParameterChoice Parameters
 
-    return layout;
+    //layout.add(std::make_unique<juce::AudioParameterBool>("LowCut Bypassed", "LowCut Bypassed", false));
+    //layout.add(std::make_unique<juce::AudioParameterBool>("PeakCut Bypassed", "PeakCut Bypassed", false));
+    //layout.add(std::make_unique<juce::AudioParameterBool>("HighCut Bypassed", "HighCut Bypassed", false));
+    //layout.add(std::make_unique<juce::AudioParameterBool>("Analyser Enabled", "Analyser Enabled", true));
+    // add boolean choices for the Bypass Buttons, the Filters are NOT bypassed by default (false) the FFT Analyser is enabled by default (true)
 
+    return layout;
     // now we have created our 'layout' return it to the Audio Processor Value Tree State Constructor
     // which called it in the PluginProcessor.h file
 }
-
-// 
 
 //==============================================================================
 // This creates new instances of the plugin..

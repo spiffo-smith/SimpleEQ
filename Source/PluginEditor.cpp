@@ -9,6 +9,8 @@
 #include "PluginProcessor.h"
 #include "PluginEditor.h"
 
+// defines the LookAndFeel::drawRotarySlider function
+//---------------------------------------------------
 void LookAndFeel::drawRotarySlider(juce::Graphics& g,
     int x,
     int y,
@@ -83,8 +85,9 @@ void LookAndFeel::drawRotarySlider(juce::Graphics& g,
         // draw in white the 'text' inside the rectangle, centred and 1 line of text
     }
 }
-// defines the LookAndFeel::drawRotarySlider function
 
+// this is our paint function for drawing a 'RotarySliderWithLabels' using the JUCE LookAndFeel::drawRotarySlider
+//---------------------------------------------------------------------------------------------------------------
 void RotarySliderWithLabels::paint(juce::Graphics& g)
 {
     using namespace juce;
@@ -145,8 +148,9 @@ void RotarySliderWithLabels::paint(juce::Graphics& g)
     }
     // the code above is what draws our min & max 'labels' onto their correct position
 }
-// this is our paint function for drawing a 'RotarySliderWithLabels' using the JUCE LookAndFeel::drawRotarySlider
 
+// this defines our getSliderBounds function, it returns a juce Rectangle
+//-----------------------------------------------------------------------
 juce::Rectangle<int> RotarySliderWithLabels::getSliderBounds() const
 {
     auto bounds = getLocalBounds();
@@ -164,8 +168,9 @@ juce::Rectangle<int> RotarySliderWithLabels::getSliderBounds() const
     return r;
     // returns the rectangle 'r' when the getSliderBounds function is called
 }
-// this defines our getSliderBounds function, it returns a juce Rectangle
 
+// function that gets the Slider's current value and or Audio Parameter Choice & returns it as a string for display inside the Slider
+//----------------------------------------------------------------------------------------------------------------------------------
 juce::String RotarySliderWithLabels::getDisplayString() const
 {
     if (auto* choiceParam = dynamic_cast<juce::AudioParameterChoice*>(param))
@@ -209,10 +214,17 @@ juce::String RotarySliderWithLabels::getDisplayString() const
     }
     return str;
 }
-// function that gets the Slider's current value and or Audio Prameter Choice & returns it as a string for display inside the Slider
 
 //==============================================================================
-ResponseCurveComponent::ResponseCurveComponent(SimpleEQAudioProcessor& p) : audioProcessor(p)
+// Constructor for the ResponseCurveComponent
+//-------------------------------------------
+ResponseCurveComponent::ResponseCurveComponent(SimpleEQAudioProcessor& p) : 
+    audioProcessor(p),
+    // leftChannelFifo(&audioProcessor.leftChannelFifo)
+
+leftPathProducer(audioProcessor.leftChannelFifo),
+rightPathProducer(audioProcessor.rightChannelFifo)
+
 {
     const auto& params = audioProcessor.getParameters();
     // creates an array of pointers that are returned by the getParameters function
@@ -228,7 +240,6 @@ ResponseCurveComponent::ResponseCurveComponent(SimpleEQAudioProcessor& p) : audi
     startTimerHz(60);
     // starts a 60Hz ticking timer!
 }
-// Constrcutor for the ResponseCurveComponent
 
 ResponseCurveComponent::~ResponseCurveComponent()
 {
@@ -249,8 +260,67 @@ void ResponseCurveComponent::parameterValueChanged(int parameterIndex, float new
     // sets our Atomic Clock to true
 }
 
+// PathProducer process function definition
+// ----------------------------------------
+void PathProducer::process(juce::Rectangle<float> fftBounds, double sampleRate)
+{
+    juce::AudioBuffer<float> tempIncomingBuffer;
+    // make a temporary buffer
+    while (leftChannelFifo->getNumCompleteBuffersAvailable() > 0)
+    {
+        if (leftChannelFifo->getAudioBuffer(tempIncomingBuffer))
+        {
+            auto size = tempIncomingBuffer.getNumSamples();
+
+            juce::FloatVectorOperations::copy(monoBuffer.getWritePointer(0, 0),
+                monoBuffer.getReadPointer(0, size),
+                monoBuffer.getNumSamples() - size);
+            // monoBuffer is a vector. we are shifting everything in the buffer to make room for the next lot of samples
+
+            juce::FloatVectorOperations::copy(monoBuffer.getWritePointer(0, monoBuffer.getNumSamples() - size),
+                tempIncomingBuffer.getReadPointer(0, 0),
+                size);
+            // now we are writing those samples into the vector at the front where we made the correct amount of room
+
+            leftChannelFFTDataGenerator.produceFFTDataForRendering(monoBuffer, -48.f);
+            // sends the monoBuffer to the 'produceFFTDataForRendering'
+        }
+    }
+    // only run this loop while there are completely filled buffers to process
+ 
+     // construct the parameters for passing into the FFT Path Generator generatePath function
+    const auto fftSize = leftChannelFFTDataGenerator.getFFTSize(); // 2048, 2096, etc
+    const auto binWidth = sampleRate / (double)fftSize; // fftSize needs to be converted to a double because Sample Rate already is
+
+     // if there are FFT Data Buffers to pull, if we can pull a buffer, then generate a FFT Path
+    while (leftChannelFFTDataGenerator.getNumAvailableFFTDataBlocks() > 0)
+    {
+        std::vector<float> fftData;
+        if (leftChannelFFTDataGenerator.getFFTData(fftData))
+        {
+            pathProducer.generatePath(fftData, fftBounds, fftSize, binWidth, -48.f);
+        }
+    }
+
+    // while there are paths that can be pulled, i.e. numPathsAvailable is NOT 0, pull the path
+    while (pathProducer.getNumPathsAvailable())
+    {
+        pathProducer.getPath(leftChannelFFTPath);
+    }
+}
+
+// every time the Timer ticks this code gets executed I think?
+//------------------------------------------------------------
 void ResponseCurveComponent::timerCallback()
 {
+    // get the parameters to pass into the FFT Path Producer
+    auto fftBounds = getAnalysisArea().toFloat();
+    auto sampleRate = audioProcessor.getSampleRate();
+
+    // run the FFT Path Producer process code
+    leftPathProducer.process(fftBounds, sampleRate);
+    rightPathProducer.process(fftBounds, sampleRate);
+
     if (parametersChanged.compareAndSetBool(false, true))
         // if 'parametersChanged is true set to false and run code below
     {
@@ -258,9 +328,10 @@ void ResponseCurveComponent::timerCallback()
         // writes "params changed" to the standard error stream
         updateChain();
         // calls the updateChain function
-        repaint();
-        // signal a repaint
     }
+
+    repaint();
+    // signal a repaint
 }
 
 void ResponseCurveComponent::updateChain()
@@ -280,6 +351,8 @@ void ResponseCurveComponent::updateChain()
     // update the monoChain
 }
 
+// this is the GUI Paint for our ResponseCurve Component, if you don't put something in here you won't see it!
+//------------------------------------------------------------------------------------------------------------
 void ResponseCurveComponent::paint(juce::Graphics& g)
 {
     using namespace juce;
@@ -288,8 +361,11 @@ void ResponseCurveComponent::paint(juce::Graphics& g)
     // (Our component is opaque, so we must completely fill the background with a solid colour)
     g.fillAll(Colours::black);
 
-    auto responseArea = getLocalBounds();
-    // sets the response area where we draw our EQ Curve equal to the top third of the GUI
+    g.drawImage(background, getLocalBounds().toFloat());
+    // draws the image 'background' onto the Response Curve
+
+    auto responseArea = getAnalysisArea();
+    // sets the 'responseArea' where we draw our EQ Curve equal to the getAnalysisArea function return
 
     auto w = responseArea.getWidth();
 
@@ -362,13 +438,186 @@ void ResponseCurveComponent::paint(juce::Graphics& g)
         responseCurve.lineTo(responseArea.getX() + i, map(mags[i]));
         // this adds a line to 'responseCurve' for each x coordinate of the responseArea
     }
+
+    auto leftChannelFFTPath = leftPathProducer.getPath();
+    leftChannelFFTPath.applyTransform(AffineTransform().translation(responseArea.getX(), responseArea.getY()));
+    // moves the FFT Path to the Response Area X and Y points to anchor it at the bottom of the Response Area
+
+    g.setColour(Colours::skyblue);
+    g.strokePath(leftChannelFFTPath, PathStrokeType(1.f));
+    // draws our Left FFT Path before the Response Curve so it sits behind the Response Curve
+
+    auto rightChannelFFTPath = rightPathProducer.getPath();
+    rightChannelFFTPath.applyTransform(AffineTransform().translation(responseArea.getX(), responseArea.getY()));
+    // moves the FFT Path to the Response Area X and Y points to anchor it at the bottom of the Response Area
+
+    g.setColour(Colours::lightyellow);
+    g.strokePath(rightChannelFFTPath, PathStrokeType(1.f));
+    // draws our Right FFT Path before the Response Curve so it sits behind the Response Curve
+
     g.setColour(Colours::orange);
-    g.drawRoundedRectangle(responseArea.toFloat(), 4.f, 1.f);
+    g.drawRoundedRectangle(getRenderArea().toFloat(), 4.f, 1.f);
     // draws an orange rectangle around the responseArea
 
     g.setColour(Colours::white);
     g.strokePath(responseCurve, PathStrokeType(2.f));
     // this draws the responseCurve
+}
+
+// this 'resized' function creates an image called 'background' for overlay on the Response Curve, it draws lines for Frequency & Gain
+//------------------------------------------------------------------------------------------------------------------------------------
+void ResponseCurveComponent::resized()
+{
+    using namespace juce;
+
+    background = Image(Image::PixelFormat::RGB, getWidth(), getHeight(), true);
+    // the image called 'background' is in RGB format, it is the width & height of the ResponseCurveComponent & we clear it to black at start
+    Graphics g(background);
+    // creates a Graphics Context 'g' which can be passed / used in a paint function later
+
+    Array<float> freqs
+    {
+        20, /*30, 40,*/ 50, 100,
+        200, /*300, 400,*/ 500, 1000,
+        2000, /*3000, 4000,*/ 5000, 10000,
+        20000
+    };
+    // creates an array of frequencies for drawing our lines & labels
+
+    auto renderArea = getAnalysisArea();
+    auto left = renderArea.getX();
+    auto right = renderArea.getRight();
+    auto top = renderArea.getY();
+    auto bottom = renderArea.getBottom();
+    auto width = renderArea.getWidth();
+
+    Array<float> xs;
+    for (auto f : freqs)
+    {
+        auto normX = mapFromLog10(f, 20.f, 20000.f);
+        xs.add(left + width * normX);
+    }
+    // loop around the 'freqs' Array and convert the frequency to a normalised (0 to 1) value to create a new Array 'xs' 
+
+    g.setColour(Colours::dimgrey);
+ 
+    for(auto x : xs)
+    {
+        g.drawVerticalLine(x, top, bottom);
+    }
+    // loops around all items in the array 'xs'. Draws a vertical line from our normalised X position
+
+    Array<float> gain
+    {
+        -24, -12, 0, 12, 24
+    };
+
+    for (auto gDb : gain)
+    {
+        auto y = jmap(gDb, -24.f, 24.f, float(bottom), float(top));
+        // 'y' is gDb remapped from the source range -24 to +24 to the target range which is the top & bottom of the 'renderArea'
+        g.setColour(gDb == 0.f ? Colour(0u, 172u, 1u) : Colours::darkgrey);
+        // if gDb equals 0 set the Colour to 0u, 172u, 1u. Otherwise use darkgrey
+        g.drawHorizontalLine(y, left, right);
+        // draw a horizontal line at the remapped Y position between the left & right edges of the renderArea
+    }
+    // all entries in the array 'gain' get remapped to a value between the top & bottom of the renderArea
+    // the gain lines are then drawn as horizontal lines at a Y position, from the left to right of the 'renderArea'
+
+    g.setColour(Colours::lightgrey);
+    const int fontHeight = 10;
+    g.setFont(fontHeight);
+
+    for (int i = 0; i < freqs.size(); ++i)
+    {
+        auto f = freqs[i];
+        auto x = xs[i];
+
+        bool addK = false;
+        String str;
+
+        if (f > 999.f)
+        {
+            addK = true;
+            f /= 1000.f;
+        }
+        // if the frequency is 1000 or above, set addK to true and divide the frequency by 1000
+
+        str << f;
+        // add the frequency to the string
+        if (addK)
+            str << "k";
+        // if addK is true then add "k" to the string
+        str << "Hz";
+        // add "Hz" to the string
+
+        auto textWidth = g.getCurrentFont().getStringWidth(str);
+
+        Rectangle<int> r;
+        r.setSize(textWidth, fontHeight);
+        r.setCentre(x, 0);
+        r.setY(1);
+
+        g.drawFittedText(str, r, juce::Justification::centred, 1);
+        // draw our frequency lables inside rectangle 'r', centre justification & max lines of 1
+    }
+    for (auto gDb : gain)
+    {
+        auto y = jmap(gDb, -24.f, 24.f, float(bottom), float(top));
+
+        String str;
+        if (gDb > 0)
+            str << "+";
+        // if gain is greater than 0, add "+" to the string
+        str << gDb;
+        // add the gain value to the string
+
+        auto textWidth = g.getCurrentFont().getStringWidth(str);
+
+        Rectangle<int> r;
+        r.setSize(textWidth, fontHeight);
+        r.setX(getWidth() - textWidth);
+        r.setCentre(r.getCentreX(), y);
+
+        g.setColour(gDb == 0.f ? Colour(0u, 172u, 1u) : Colours::lightgrey);
+        // if gDb equals 0 set the Colour to 0u, 172u, 1u. Otherwise use lightgrey
+
+        g.drawFittedText(str, r, juce::Justification::centred, 1);
+        // draw the gain values in a rectangle on the right hand side
+
+        str.clear();
+        str << (gDb - 24.f);
+
+        r.setX(1);
+        textWidth = g.getCurrentFont().getStringWidth(str);
+        r.setSize(textWidth, fontHeight);
+        g.setColour(Colours::lightgrey);
+        g.drawFittedText(str, r, juce::Justification::centred, 1);
+        // draw the spectrum analyser label axis values on the left hand side
+        }
+}
+
+// defines the 'getRenderArea' function, this reduces the ResponseCurveComponent bounds by 10 on the X and 8 on the Y
+//-------------------------------------------------------------------------------------------------------------------
+juce::Rectangle<int> ResponseCurveComponent::getRenderArea()
+{
+    auto bounds = getLocalBounds();
+    // 'bounds' becomes equal to the ResponseCurveComponent bounds
+
+    bounds.removeFromTop(12);
+    bounds.removeFromBottom(2);
+    bounds.removeFromLeft(20);
+    bounds.removeFromRight(20);
+    return bounds;
+}
+
+juce::Rectangle<int> ResponseCurveComponent::getAnalysisArea()
+{
+    auto bounds = getRenderArea();
+    // 'bounds' becomes equal to the getRenderArea
+    bounds.removeFromTop(4);
+    bounds.removeFromBottom(4);
+    return bounds;
 }
 
 SimpleEQAudioProcessorEditor::SimpleEQAudioProcessorEditor(SimpleEQAudioProcessor& p)
@@ -442,8 +691,8 @@ void SimpleEQAudioProcessorEditor::resized()
     // subcomponents in your editor..
 
     auto bounds = getLocalBounds();
-    float hRatio = 25.f / 100.f; // JUCE_LIVE_CONSTANT(33) / 100.f;
-    // hRatio is 0.25, if we delete '25.f / 100.f' and uncomment the JUCE_LIVE_CONSTANT we can dynamically change hRatio whilst the Plugin is running
+    float hRatio = 40.f / 100.f; /* JUCE_LIVE_CONSTANT(33) / 100.f; */
+    // hRatio is 0.4, if we delete '40.f / 100.f' and uncomment the JUCE_LIVE_CONSTANT we can dynamically change hRatio whilst the Plugin is running
     auto responseArea = bounds.removeFromTop(bounds.getHeight() * hRatio);
     // we are making 'bounds' equal to the whole GUI, then we are making 'responseArea' equal to it's total height * hRatio
 
@@ -457,33 +706,44 @@ void SimpleEQAudioProcessorEditor::resized()
     auto highCutArea = bounds.removeFromRight(bounds.getWidth() * 0.5);
     // we are making 'lowCutArea' equal to the left third, then 'highCutArea' the right third (half of the remaining)
 
+    //lowcutBypassButton.setBounds(lowCutArea.removeFromTop(25));
     lowCutFreqSlider.setBounds(lowCutArea.removeFromTop(bounds.getHeight() * 0.5));
     lowCutSlopeSlider.setBounds(lowCutArea);
-    // makes the 'lowCutFreqSlider' take up the top half of 'lowCutArea', and 'lowCutSlopeSlider takes the bottom half (what's left)
+    // makes the Bypass Button take up the top 25 pixels of the lowCutArea
+    // 'lowCutFreqSlider' takes up top half of what's left of 'lowCutArea', and 'lowCutSlopeSlider takes the bottom half (what's left)
 
+    //highcutBypassButton.setBounds(highCutArea.removeFromTop(25));
     highCutFreqSlider.setBounds(highCutArea.removeFromTop(bounds.getHeight() * 0.5));
     highCutSlopeSlider.setBounds(highCutArea);
-    // makes the 'highCutFreqSlider' take up the top half of 'highCutArea', and 'highCutSlopeSlider takes the bottom half (what's left)
+    // makes the Bypass Button take up the top 25 pixels of the highCutArea
+    // 'highCutFreqSlider' takes the top half of what's left of 'highCutArea', and 'highCutSlopeSlider takes the bottom half (what's left)
 
+    //peakBypassButton.setBounds(bounds.removeFromTop(25));
     peakFreqSlider.setBounds(bounds.removeFromTop(bounds.getHeight() * 0.33));
     peakGainSlider.setBounds(bounds.removeFromTop(bounds.getHeight() * 0.5));
     peakQualitySlider.setBounds(bounds);
-    // at this point 'bounds' only comprises the bottom middle strip
-    // 'peakFreqSlider' takes the top third, 'peakGainSlider' takes the middle third & 'peakQualitySlider' is left with the bottom third
+    // at this point 'bounds' only comprises the bottom middle strip, Bypass Button takes the top 25 pixels
+    // 'peakFreqSlider' takes the top third of what's left, 'peakGainSlider' takes the middle third & 'peakQualitySlider' is left with bottom third
 }
 
-std::vector <juce::Component*> SimpleEQAudioProcessorEditor::getComps()
-{
-    return
-    {
-        &peakFreqSlider,
-        &peakGainSlider,
-        &peakQualitySlider,
-        &lowCutFreqSlider,
-        &highCutFreqSlider,
-        &lowCutSlopeSlider,
-        &highCutSlopeSlider,
-        &responseCurveComponent
-    };
-}
 // 'getComps' function that creates a vector of the physical memory addresses of the GUI Components then returns them all in turn
+//-------------------------------------------------------------------------------------------------------------------------------
+    std::vector <juce::Component*> SimpleEQAudioProcessorEditor::getComps()
+    {
+        return
+        {
+            &peakFreqSlider,
+            &peakGainSlider,
+            &peakQualitySlider,
+            &lowCutFreqSlider,
+            &highCutFreqSlider,
+            &lowCutSlopeSlider,
+            &highCutSlopeSlider,
+            &responseCurveComponent/*,
+
+            &lowcutBypassButton,
+            &highcutBypassButton,
+            &peakBypassButton,
+            &analyserEnabledButton*/
+        };
+    }
