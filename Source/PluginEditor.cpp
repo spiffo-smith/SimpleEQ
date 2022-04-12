@@ -706,19 +706,19 @@ void SimpleEQAudioProcessorEditor::resized()
     auto highCutArea = bounds.removeFromRight(bounds.getWidth() * 0.5);
     // we are making 'lowCutArea' equal to the left third, then 'highCutArea' the right third (half of the remaining)
 
-    //lowcutBypassButton.setBounds(lowCutArea.removeFromTop(25));
+    lowcutBypassButton.setBounds(lowCutArea.removeFromTop(25));
     lowCutFreqSlider.setBounds(lowCutArea.removeFromTop(bounds.getHeight() * 0.5));
     lowCutSlopeSlider.setBounds(lowCutArea);
     // makes the Bypass Button take up the top 25 pixels of the lowCutArea
     // 'lowCutFreqSlider' takes up top half of what's left of 'lowCutArea', and 'lowCutSlopeSlider takes the bottom half (what's left)
 
-    //highcutBypassButton.setBounds(highCutArea.removeFromTop(25));
+    highcutBypassButton.setBounds(highCutArea.removeFromTop(25));
     highCutFreqSlider.setBounds(highCutArea.removeFromTop(bounds.getHeight() * 0.5));
     highCutSlopeSlider.setBounds(highCutArea);
     // makes the Bypass Button take up the top 25 pixels of the highCutArea
     // 'highCutFreqSlider' takes the top half of what's left of 'highCutArea', and 'highCutSlopeSlider takes the bottom half (what's left)
 
-    //peakBypassButton.setBounds(bounds.removeFromTop(25));
+    peakBypassButton.setBounds(bounds.removeFromTop(25));
     peakFreqSlider.setBounds(bounds.removeFromTop(bounds.getHeight() * 0.33));
     peakGainSlider.setBounds(bounds.removeFromTop(bounds.getHeight() * 0.5));
     peakQualitySlider.setBounds(bounds);
@@ -739,11 +739,11 @@ void SimpleEQAudioProcessorEditor::resized()
             &highCutFreqSlider,
             &lowCutSlopeSlider,
             &highCutSlopeSlider,
-            &responseCurveComponent/*,
+            &responseCurveComponent,
 
             &lowcutBypassButton,
             &highcutBypassButton,
             &peakBypassButton,
-            &analyserEnabledButton*/
+            &analyserEnabledButton
         };
     }

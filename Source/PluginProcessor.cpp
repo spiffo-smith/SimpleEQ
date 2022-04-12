@@ -248,9 +248,9 @@ ChainSettings getChainSettings(juce::AudioProcessorValueTreeState& apvts) {
     settings.lowCutSlope = static_cast<Slope>(apvts.getRawParameterValue("LowCut Slope")->load());
     settings.highCutSlope = static_cast<Slope>(apvts.getRawParameterValue("HighCut Slope")->load());
 
-    //settings.lowCutBypassed = apvts.getRawParameterValue("LowCut Bypassed")->load() > 0.5f;
-    //settings.peakBypassed = apvts.getRawParameterValue("Peak Bypassed")->load() > 0.5f;
-    //settings.highCutBypassed = apvts.getRawParameterValue("HighCut Bypassed")->load() > 0.5f;
+    settings.lowCutBypassed = apvts.getRawParameterValue("LowCut Bypassed")->load() > 0.5f;
+    settings.peakBypassed = apvts.getRawParameterValue("Peak Bypassed")->load() > 0.5f;
+    settings.highCutBypassed = apvts.getRawParameterValue("HighCut Bypassed")->load() > 0.5f;
     // retrieve the Bypass Button states. These booleans are stored as floats so if they are greater than 0.5 then they are true
 
     return settings;
@@ -274,8 +274,8 @@ void SimpleEQAudioProcessor::updatePeakFilter(const ChainSettings& chainSettings
     auto peakCoefficients = makePeakFilter(chainSettings, getSampleRate());
     // makes the peakCoefficients by calling the makePeakFilter function above
 
-    //leftChain.setBypassed<ChainPositions::Peak>(chainSettings.peakBypassed);
-    //rightChain.setBypassed<ChainPositions::Peak>(chainSettings.peakBypassed);
+    leftChain.setBypassed<ChainPositions::Peak>(chainSettings.peakBypassed);
+    rightChain.setBypassed<ChainPositions::Peak>(chainSettings.peakBypassed);
     // update our left & right chains with the Bypass Setting
 
     updateCoefficients(leftChain.get<ChainPositions::Peak>().coefficients, peakCoefficients);
@@ -301,8 +301,8 @@ void SimpleEQAudioProcessor::updateLowCutFilters(const ChainSettings& chainSetti
     auto& rightLowCut = rightChain.get<ChainPositions::LowCut>();
     // does the same for the right chain
 
-    //leftChain.setBypassed<ChainPositions::LowCut>(chainSettings.lowCutBypassed);
-    //rightChain.setBypassed<ChainPositions::LowCut>(chainSettings.lowCutBypassed);
+    leftChain.setBypassed<ChainPositions::LowCut>(chainSettings.lowCutBypassed);
+    rightChain.setBypassed<ChainPositions::LowCut>(chainSettings.lowCutBypassed);
     // sets the left & right chains bypass state
 
     updateCutFilter(leftLowCut, cutCoefficients, chainSettings.lowCutSlope);
@@ -320,8 +320,8 @@ void SimpleEQAudioProcessor::updateHighCutFilters(const ChainSettings& chainSett
     auto& leftHighCut = leftChain.get<ChainPositions::HighCut>();
     auto& rightHighCut = rightChain.get<ChainPositions::HighCut>();
 
-    //leftChain.setBypassed<ChainPositions::HighCut>(chainSettings.highCutBypassed);
-    //rightChain.setBypassed<ChainPositions::HighCut>(chainSettings.highCutBypassed);
+    leftChain.setBypassed<ChainPositions::HighCut>(chainSettings.highCutBypassed);
+    rightChain.setBypassed<ChainPositions::HighCut>(chainSettings.highCutBypassed);
     // sets the left & right chains bypass state
 
     updateCutFilter(leftHighCut, highCutCoefficients, chainSettings.highCutSlope);
@@ -385,10 +385,10 @@ juce::AudioProcessorValueTreeState::ParameterLayout SimpleEQAudioProcessor::crea
     layout.add(std::make_unique<juce::AudioParameterChoice>("HighCut Slope", "HighCut Slope", stringArray, 0));
     // now we have created our stringArray we can use it when we create the 2 AudioParameterChoice Parameters
 
-    //layout.add(std::make_unique<juce::AudioParameterBool>("LowCut Bypassed", "LowCut Bypassed", false));
-    //layout.add(std::make_unique<juce::AudioParameterBool>("PeakCut Bypassed", "PeakCut Bypassed", false));
-    //layout.add(std::make_unique<juce::AudioParameterBool>("HighCut Bypassed", "HighCut Bypassed", false));
-    //layout.add(std::make_unique<juce::AudioParameterBool>("Analyser Enabled", "Analyser Enabled", true));
+    layout.add(std::make_unique<juce::AudioParameterBool>("LowCut Bypassed", "LowCut Bypassed", false));
+    layout.add(std::make_unique<juce::AudioParameterBool>("Peak Bypassed", "Peak Bypassed", false));
+    layout.add(std::make_unique<juce::AudioParameterBool>("HighCut Bypassed", "HighCut Bypassed", false));
+    layout.add(std::make_unique<juce::AudioParameterBool>("Analyser Enabled", "Analyser Enabled", true));
     // add boolean choices for the Bypass Buttons, the Filters are NOT bypassed by default (false) the FFT Analyser is enabled by default (true)
 
     return layout;

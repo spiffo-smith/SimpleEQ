@@ -168,7 +168,7 @@ struct ChainSettings
 
     Slope lowCutSlope{ Slope::Slope_12 }, highCutSlope{ Slope::Slope_12 };
 
-    //bool lowCutBypassed{ false }, peakBypassed{ false }, highCutBypassed{ false };
+    bool lowCutBypassed{ false }, peakBypassed{ false }, highCutBypassed{ false };
     // 3 booleans to represent the Bypass Buttons State
 };
 
@@ -330,8 +330,6 @@ private:
     void updatePeakFilter(const ChainSettings& chainSettings);
     // declares a function for updating the Peak Filter Coefficients
     // takes in a parameter called 'chainSettings' which is a reference to the 'ChainSettings' Structure
-
-    
 
     void updateLowCutFilters(const ChainSettings& chainSettings);
 

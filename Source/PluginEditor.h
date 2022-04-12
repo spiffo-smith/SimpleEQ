@@ -338,7 +338,7 @@ private:
         highCutSlopeSliderAttachment;
     // now we can declare the attachments using the Aliases defined above
 
-    //juce::ToggleButton lowcutBypassButton, peakBypassButton, highcutBypassButton, analyserEnabledButton;
+    juce::ToggleButton lowcutBypassButton, peakBypassButton, highcutBypassButton, analyserEnabledButton;
     // add some standard juce toggle buttons for the Bypass Buttons
 
     std::vector<juce::Component*> getComps();
