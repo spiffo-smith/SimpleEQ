@@ -168,7 +168,7 @@ struct ChainSettings
 
     Slope lowCutSlope{ Slope::Slope_12 }, highCutSlope{ Slope::Slope_12 };
 
-    //bool lowCutBypassed{ false }, peakBypassed{ false }, highCutBypassed{ false };
+    bool lowCutBypassed{ false }, peakBypassed{ false }, highCutBypassed{ false };
     // 3 booleans to represent the Bypass Buttons State
 };
 
