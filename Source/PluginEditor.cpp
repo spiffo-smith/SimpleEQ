@@ -334,10 +334,18 @@ void ResponseCurveComponent::timerCallback()
     // signal a repaint
 }
 
+// This is the function that updates the Response Curve Component GUI from the getChainSettings function
+// -----------------------------------------------------------------------------------------------------
 void ResponseCurveComponent::updateChain()
 {
     auto chainSettings = getChainSettings(audioProcessor.apvts);
     // get the chain settings from the apvts
+
+    monoChain.setBypassed<ChainPositions::LowCut>(chainSettings.lowCutBypassed);
+    monoChain.setBypassed<ChainPositions::Peak>(chainSettings.peakBypassed);
+    monoChain.setBypassed<ChainPositions::HighCut>(chainSettings.highCutBypassed);
+    // update the state of the Bypass Buttons
+
     auto peakCoefficients = makePeakFilter(chainSettings, audioProcessor.getSampleRate());
     // get the peakCoefficients
     auto lowCutCoefficients = makeLowCutFilter(chainSettings, audioProcessor.getSampleRate());
@@ -390,18 +398,24 @@ void ResponseCurveComponent::paint(juce::Graphics& g)
 
         if (!monoChain.isBypassed<ChainPositions::Peak>())
             mag *= peak.coefficients->getMagnitudeForFrequency(freq, sampleRate);
-        // if it's NOT bypassed, compute the magnitude for that frequency and multiply 'mag' by it
+        // if the Peak Filter is NOT bypassed, compute the magnitude for that frequency and multiply 'mag' by it
 
-        if (!lowcut.isBypassed<0>())
-            mag *= lowcut.get<0>().coefficients->getMagnitudeForFrequency(freq, sampleRate);
-        if (!lowcut.isBypassed<1>())
-            mag *= lowcut.get<1>().coefficients->getMagnitudeForFrequency(freq, sampleRate);
-        if (!lowcut.isBypassed<2>())
-            mag *= lowcut.get<2>().coefficients->getMagnitudeForFrequency(freq, sampleRate);
-        if (!lowcut.isBypassed<3>())
-            mag *= lowcut.get<3>().coefficients->getMagnitudeForFrequency(freq, sampleRate);
-        // the low cut filter is acutally 4 filters in series so we need to test and compute each one
+        if (!monoChain.isBypassed<ChainPositions::LowCut>())
+            // if the LowCut Filter is Bypassed don't bother doing the Filter Pole checks below
+        {
+            if (!lowcut.isBypassed<0>())
+                mag *= lowcut.get<0>().coefficients->getMagnitudeForFrequency(freq, sampleRate);
+            if (!lowcut.isBypassed<1>())
+                mag *= lowcut.get<1>().coefficients->getMagnitudeForFrequency(freq, sampleRate);
+            if (!lowcut.isBypassed<2>())
+                mag *= lowcut.get<2>().coefficients->getMagnitudeForFrequency(freq, sampleRate);
+            if (!lowcut.isBypassed<3>())
+                mag *= lowcut.get<3>().coefficients->getMagnitudeForFrequency(freq, sampleRate);
+            // the low cut filter is acutally 4 filters in series so we need to test and compute each one
+        }
 
+        if (!monoChain.isBypassed<ChainPositions::HighCut>())
+        {
         if (!highcut.isBypassed<0>())
             mag *= highcut.get<0>().coefficients->getMagnitudeForFrequency(freq, sampleRate);
         if (!highcut.isBypassed<1>())
@@ -410,6 +424,7 @@ void ResponseCurveComponent::paint(juce::Graphics& g)
             mag *= highcut.get<2>().coefficients->getMagnitudeForFrequency(freq, sampleRate);
         if (!highcut.isBypassed<3>())
             mag *= highcut.get<3>().coefficients->getMagnitudeForFrequency(freq, sampleRate);
+    }
 
         mags[i] = Decibels::gainToDecibels(mag);
         // converts the final computed gain from all the filters to decibels and stores it in the mags vector!
@@ -620,6 +635,8 @@ juce::Rectangle<int> ResponseCurveComponent::getAnalysisArea()
     return bounds;
 }
 
+// This is the PluginEditor Constructor
+// ------------------------------------
 SimpleEQAudioProcessorEditor::SimpleEQAudioProcessorEditor(SimpleEQAudioProcessor& p)
     : AudioProcessorEditor(&p), audioProcessor(p),
 
@@ -640,8 +657,14 @@ SimpleEQAudioProcessorEditor::SimpleEQAudioProcessorEditor(SimpleEQAudioProcesso
     lowCutFreqSliderAttachment(audioProcessor.apvts, "LowCut Freq", lowCutFreqSlider),
     highCutFreqSliderAttachment(audioProcessor.apvts, "HighCut Freq", highCutFreqSlider),
     lowCutSlopeSliderAttachment(audioProcessor.apvts, "LowCut Slope", lowCutSlopeSlider),
-    highCutSlopeSliderAttachment(audioProcessor.apvts, "HighCut Slope", highCutSlopeSlider)
+    highCutSlopeSliderAttachment(audioProcessor.apvts, "HighCut Slope", highCutSlopeSlider),
     // these define our Slider Attachments that were declared in the pluginEditor.h
+
+    lowcutBypassButtonAttachment(audioProcessor.apvts, "LowCut Bypassed", lowcutBypassButton),
+    peakBypassButtonAttachment(audioProcessor.apvts, "Peak Bypassed", peakBypassButton),
+    highcutBypassButtonAttachment(audioProcessor.apvts, "HighCut Bypassed", highcutBypassButton),
+    analyzerEnabledButtonAttachment(audioProcessor.apvts, "Analyzer Enabled", analyzerEnabledButton)
+    // these define our Bypass Button Attachments that were declared in the pluginEditor.h
 {
     peakFreqSlider.labels.add({ 0.f, "20Hz" });
     peakFreqSlider.labels.add({ 1.f, "20kHz" });
@@ -744,6 +767,6 @@ void SimpleEQAudioProcessorEditor::resized()
             &lowcutBypassButton,
             &highcutBypassButton,
             &peakBypassButton,
-            &analyserEnabledButton
+            &analyzerEnabledButton
         };
     }

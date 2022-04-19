@@ -340,6 +340,8 @@ void SimpleEQAudioProcessor::updateFilters()
     // then calls the functions to update all the filters
 }
 
+// This is the createParameterLayout function, this is where you add Parameters to the APVTS
+// ---------------------------------------------
 juce::AudioProcessorValueTreeState::ParameterLayout SimpleEQAudioProcessor::createParameterLayout()
 {
     juce::AudioProcessorValueTreeState::ParameterLayout layout;
@@ -388,7 +390,7 @@ juce::AudioProcessorValueTreeState::ParameterLayout SimpleEQAudioProcessor::crea
     layout.add(std::make_unique<juce::AudioParameterBool>("LowCut Bypassed", "LowCut Bypassed", false));
     layout.add(std::make_unique<juce::AudioParameterBool>("Peak Bypassed", "Peak Bypassed", false));
     layout.add(std::make_unique<juce::AudioParameterBool>("HighCut Bypassed", "HighCut Bypassed", false));
-    layout.add(std::make_unique<juce::AudioParameterBool>("Analyser Enabled", "Analyser Enabled", true));
+    layout.add(std::make_unique<juce::AudioParameterBool>("Analyzer Enabled", "Analyzer Enabled", true));
     // add boolean choices for the Bypass Buttons, the Filters are NOT bypassed by default (false) the FFT Analyser is enabled by default (true)
 
     return layout;

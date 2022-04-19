@@ -338,8 +338,15 @@ private:
         highCutSlopeSliderAttachment;
     // now we can declare the attachments using the Aliases defined above
 
-    juce::ToggleButton lowcutBypassButton, peakBypassButton, highcutBypassButton, analyserEnabledButton;
+    juce::ToggleButton lowcutBypassButton, peakBypassButton, highcutBypassButton, analyzerEnabledButton;
     // add some standard juce toggle buttons for the Bypass Buttons
+
+   using ButtonAttachment = APVTS::ButtonAttachment;
+   ButtonAttachment lowcutBypassButtonAttachment,
+                   peakBypassButtonAttachment,
+                   highcutBypassButtonAttachment,
+                   analyzerEnabledButtonAttachment;
+    // declares our Bypass Button Attachments, we need to connect them to parameters in the PluginEditor Constructor
 
     std::vector<juce::Component*> getComps();
     // declares a function called 'getComps' which is a vector of pointers
