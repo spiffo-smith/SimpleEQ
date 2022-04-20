@@ -155,15 +155,21 @@ private:
     Fifo<PathType> pathFifo;
 };
 
-// Declares a Look And Feel (version 4) Structure for building a 'drawRotarySlider'
+// Declares a Look And Feel (version 4) Structure for building 'drawRotarySlider' & 'drawToggleButton'
+// These are Classes / Structures that are part of the JUCE 'Look And Feel' Libraries
 //---------------------------------------------------------------------------------
 struct LookAndFeel : juce::LookAndFeel_V4
 {
     void drawRotarySlider(juce::Graphics&, int x, int y, int width, int height,
-        float sliderPosProportional,
-        float rotaryStartAngle,
-        float rotaryEndAngle,
-        juce::Slider&) override;
+                          float sliderPosProportional,
+                          float rotaryStartAngle,
+                          float rotaryEndAngle,
+                          juce::Slider&) override;
+
+    void drawToggleButton(juce::Graphics& g,
+                          juce::ToggleButton& toggleButton,
+                          bool shouldDrawButtonAsHighlighted,
+                          bool shouldDrawButtonAsDown) override;
 };
 
 // Declare a Structure that will define & build all our Rotary GUI Controls
@@ -294,9 +300,34 @@ private:
 
 };
 
-//==============================================================================
-/**
-*/
+// declare structures for the 2 types of Toggle Button
+struct PowerButton : juce::ToggleButton {};
+struct AnalyzerButton : juce::ToggleButton
+{
+    void resized() override
+    {
+        auto bounds = getLocalBounds();
+        auto insetRect = bounds.reduced(4);
+
+        randomPath.clear();
+
+        juce::Random r;
+        // creates a random variable called 'r'
+
+        randomPath.startNewSubPath(insetRect.getX(), insetRect.getY() + insetRect.getHeight() * r.nextFloat());
+
+        for (auto x = insetRect.getX() + 1; x < insetRect.getRight(); x += 2)
+        {
+            randomPath.lineTo(x, insetRect.getY() + insetRect.getHeight() * r.nextFloat());
+        }
+        // creates a path that has the X width but the Y height is randomized along the X Axis
+    }
+    juce::Path randomPath;
+};
+
+
+// This is the Plugin Editor Declaration
+//======================================
 class SimpleEQAudioProcessorEditor  : public juce::AudioProcessorEditor
 
 {
@@ -338,8 +369,9 @@ private:
         highCutSlopeSliderAttachment;
     // now we can declare the attachments using the Aliases defined above
 
-    juce::ToggleButton lowcutBypassButton, peakBypassButton, highcutBypassButton, analyzerEnabledButton;
-    // add some standard juce toggle buttons for the Bypass Buttons
+    PowerButton lowcutBypassButton, peakBypassButton, highcutBypassButton;
+    AnalyzerButton analyzerEnabledButton;
+    // add the 2 types of juce toggle button for the Bypass Buttons
 
    using ButtonAttachment = APVTS::ButtonAttachment;
    ButtonAttachment lowcutBypassButtonAttachment,
@@ -350,6 +382,9 @@ private:
 
     std::vector<juce::Component*> getComps();
     // declares a function called 'getComps' which is a vector of pointers
+
+    LookAndFeel lnf;
+    // gives our Editor a Look And Feel instance
 
     JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR (SimpleEQAudioProcessorEditor)
 };

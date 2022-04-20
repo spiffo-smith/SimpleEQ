@@ -25,13 +25,15 @@ void LookAndFeel::drawRotarySlider(juce::Graphics& g,
 
     auto bounds = Rectangle<float>(x, y, width, height);
 
-    g.setColour(Colour(97u, 18u, 167u));
-    g.fillEllipse(bounds);
-    // draws a filled in purple ellipse
+    auto enabled = slider.isEnabled();
 
-    g.setColour(Colour(255u, 154u, 1u));
+    g.setColour(enabled ? Colour(97u, 18u, 167u) : Colours::darkgrey);
+    g.fillEllipse(bounds);
+    // draws a filled in purple ellipse unless disabled then draws it in darkgrey
+
+    g.setColour(enabled ? Colour(255u, 154u, 1u) : Colours::grey);
     g.drawEllipse(bounds, 1.f);
-    // draws an orange ellipse line around the outside
+    // draws an orange ellipse line around the outside unless disabled then it's grey
 
     if (auto* rswl = dynamic_cast<RotarySliderWithLabels*>(&slider))
         // creates a variable rswl which is cast of RotarySliderWithLabels, if that works then do all the stuff below
@@ -83,6 +85,67 @@ void LookAndFeel::drawRotarySlider(juce::Graphics& g,
         g.setColour(Colours::white);
         g.drawFittedText(text, r.toNearestInt(), juce::Justification::centred, 1);
         // draw in white the 'text' inside the rectangle, centred and 1 line of text
+    }
+}
+
+// defines the LookAndFeel 'drawToggleButton' function
+// ---------------------------------------------------
+void LookAndFeel::drawToggleButton(juce::Graphics& g,
+                                   juce::ToggleButton& toggleButton,
+                                   bool shouldDrawButtonAsHighlighted,
+                                   bool shouldDrawButtonAsDown)
+{
+    using namespace juce;
+
+    // if we can cast from structure 'PowerButton' then run this code
+    if (auto* pb = dynamic_cast<PowerButton*>(&toggleButton))
+    {
+    Path powerButton;
+
+    auto bounds = toggleButton.getLocalBounds();
+    auto size = jmin(bounds.getWidth(), bounds.getHeight()) - 6;
+    auto r = bounds.withSizeKeepingCentre(size, size).toFloat();
+
+    float ang = 30.f;
+
+    size -= 6;
+
+    powerButton.addCentredArc(r.getCentreX(),
+                              r.getCentreY(),
+                              size * 0.5, size * 0.5,
+                              0.f,
+                              degreesToRadians(ang),
+                              degreesToRadians(360.f - ang),
+                              true);
+    // Button is at the centre of the rectangle 'r', half the radias of the bounds, not rotated, from 30 degrees to 330 degrees, as a new sub path
+
+    powerButton.startNewSubPath(r.getCentreX(), r.getY());
+    powerButton.lineTo(r.getCentre());
+    // starts a sub path, which adds a line to the centre
+
+    PathStrokeType pst(2.f, PathStrokeType::JointStyle::curved);
+
+    auto color = toggleButton.getToggleState() ? Colours::dimgrey : Colour(0u, 172u, 1u);
+    // if the Button is ON, colour is dimgrey
+    g.setColour(color);
+    g.strokePath(powerButton, pst);
+
+    g.drawEllipse(r, 2);
+    // draws a circle with radias r, line width 2 pixels, around the button edge
+    }
+    // else if you can cast from structure 'AnalyzerButton' then run this code
+    else if (auto* analyzerButton = dynamic_cast<AnalyzerButton*>(&toggleButton))
+    {
+        auto color = ! toggleButton.getToggleState() ? Colours::dimgrey : Colour(0u, 172u, 1u);
+        // if the Button is OFF, colour is dimgrey
+
+        g.setColour(color);
+
+        auto bounds = toggleButton.getLocalBounds();
+        g.drawRect(bounds);
+
+        g.strokePath(analyzerButton->randomPath, PathStrokeType(1.f));
+        // draw the randomPath from the analyzerButton structure
     }
 }
 
@@ -215,7 +278,6 @@ juce::String RotarySliderWithLabels::getDisplayString() const
     return str;
 }
 
-//==============================================================================
 // Constructor for the ResponseCurveComponent
 //-------------------------------------------
 ResponseCurveComponent::ResponseCurveComponent(SimpleEQAudioProcessor& p) : 
@@ -479,12 +541,13 @@ void ResponseCurveComponent::paint(juce::Graphics& g)
     // this draws the responseCurve
 }
 
-// this 'resized' function creates an image called 'background' for overlay on the Response Curve, it draws lines for Frequency & Gain
+// 'resized' function for the Response Curve Component, it defines the positions of elements on the GUI
 //------------------------------------------------------------------------------------------------------------------------------------
 void ResponseCurveComponent::resized()
 {
     using namespace juce;
 
+    // creates an image called 'background' for overlay on the Response Curve Component which has lines for Frequency & Gain
     background = Image(Image::PixelFormat::RGB, getWidth(), getHeight(), true);
     // the image called 'background' is in RGB format, it is the width & height of the ResponseCurveComponent & we clear it to black at start
     Graphics g(background);
@@ -688,13 +751,63 @@ SimpleEQAudioProcessorEditor::SimpleEQAudioProcessorEditor(SimpleEQAudioProcesso
     }
     // for loop that calls the 'getComps' function, and adds and makes visible each component as it is returned from the vector
 
+    peakBypassButton.setLookAndFeel(&lnf);
+    lowcutBypassButton.setLookAndFeel(&lnf);
+    highcutBypassButton.setLookAndFeel(&lnf);
+    analyzerEnabledButton.setLookAndFeel(&lnf);
+    // creates our Filter & Analyzer Bypass Buttons from the Look And Feel Class we created called 'lnf'
+
+    
+    // This section is for disabling the controls if a Filter is bypassed
+    // -----------------------------------------------------------------
+    auto safePtr = juce::Component::SafePointer<SimpleEQAudioProcessorEditor>(this);
+    // a safe pointer is one that will automatically become null if something else deletes it
+
+    peakBypassButton.onClick = [safePtr]()
+    {
+        if (auto* comp = safePtr.getComponent())
+        // if our safePointer exists, carry on
+        {
+            auto bypassed = comp->peakBypassButton.getToggleState();
+            comp->peakFreqSlider.setEnabled(!bypassed);
+            comp->peakGainSlider.setEnabled(!bypassed);
+            comp->peakQualitySlider.setEnabled(!bypassed);
+        }
+    };
+    lowcutBypassButton.onClick = [safePtr]()
+    {
+        if (auto* comp = safePtr.getComponent())
+        {
+            auto bypassed = comp->lowcutBypassButton.getToggleState();
+            comp->lowCutFreqSlider.setEnabled(!bypassed);
+            comp->lowCutSlopeSlider.setEnabled(!bypassed);
+        }
+    };
+    highcutBypassButton.onClick = [safePtr]()
+    {
+        if (auto* comp = safePtr.getComponent())
+        {
+            auto bypassed = comp->highcutBypassButton.getToggleState();
+            comp->highCutFreqSlider.setEnabled(!bypassed);
+            comp->highCutSlopeSlider.setEnabled(!bypassed);
+        }
+    };
+    // -----------------------------------------------------------------
+
+
     setSize (600, 480);
     // sets the overall size of the Plugin Window
 }
 
+// This is the Plugin Editor Destructor
+// ------------------------------------
 SimpleEQAudioProcessorEditor::~SimpleEQAudioProcessorEditor()
 {
-
+    peakBypassButton.setLookAndFeel(nullptr);
+    lowcutBypassButton.setLookAndFeel(nullptr);
+    highcutBypassButton.setLookAndFeel(nullptr);
+    analyzerEnabledButton.setLookAndFeel(nullptr);
+    // sets the Filter & Analyzer Bypass Buttons back to Null Pointer, to prevent memory leaks?
 }
 
 //==============================================================================
@@ -708,12 +821,27 @@ void SimpleEQAudioProcessorEditor::paint (juce::Graphics& g)
 
 }
 
+// The 'resized' function for the Editor is basically where we specify the positions of all the elements in the GUI
+// -----------------------------------------------------------------------------------------------------------------
 void SimpleEQAudioProcessorEditor::resized()
 {
     // This is generally where you'll want to lay out the positions of any
     // subcomponents in your editor..
 
     auto bounds = getLocalBounds();
+
+    auto analyzerEnabledArea = bounds.removeFromTop(25);
+    analyzerEnabledArea.setWidth(100);
+    analyzerEnabledArea.setX(5);
+    analyzerEnabledArea.removeFromTop(2);
+    // takes the top 25 pixels of the GUI for the Analyzer Enabled Button, width 100, 5 pixels in from the left, 2 pixel gap at top
+
+    analyzerEnabledButton.setBounds(analyzerEnabledArea);
+    // positions the Analyzer Enabled Button inside the Analyzer Enabled Area
+
+    bounds.removeFromTop(5);
+    // takes another 5 pixels off the bounds just to give a gap between the Analzer Enabled Area and what follows
+
     float hRatio = 40.f / 100.f; /* JUCE_LIVE_CONSTANT(33) / 100.f; */
     // hRatio is 0.4, if we delete '40.f / 100.f' and uncomment the JUCE_LIVE_CONSTANT we can dynamically change hRatio whilst the Plugin is running
     auto responseArea = bounds.removeFromTop(bounds.getHeight() * hRatio);
