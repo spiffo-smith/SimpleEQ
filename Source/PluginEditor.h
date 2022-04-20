@@ -274,6 +274,12 @@ struct ResponseCurveComponent : juce::Component,
     void resized() override;
     // declares a function called 'resized'
 
+    void toggleAnalysisEnablement(bool enabled)
+    {
+        shouldShowFFTAnalysis = enabled;
+    }
+    // declares a function for switching our FFT Anlayzer ON / OFF
+
 private:
     SimpleEQAudioProcessor& audioProcessor;
 
@@ -298,6 +304,8 @@ private:
     PathProducer leftPathProducer, rightPathProducer;
     // declares instances of left & right FFT Path Producers built from the PathProducer Structure
 
+    bool shouldShowFFTAnalysis = true;
+    // a boolean for whether we display the FFT Analyser or not
 };
 
 // declare structures for the 2 types of Toggle Button

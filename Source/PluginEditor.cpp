@@ -78,13 +78,13 @@ void LookAndFeel::drawRotarySlider(juce::Graphics& g,
         r.setCentre(bounds.getCentre());
         // creating a rectangle around the displayed text
 
-        g.setColour(Colours::black);
+        g.setColour(enabled ? Colours::black : Colours::darkgrey);
         g.fillRect(r);
-        // fill that rectangle with black
+        // fill that rectangle with black unless we are NOT enabled, then fill with darkgrey
 
-        g.setColour(Colours::white);
+        g.setColour(enabled ? Colours::white : Colours::lightgrey);
         g.drawFittedText(text, r.toNearestInt(), juce::Justification::centred, 1);
-        // draw in white the 'text' inside the rectangle, centred and 1 line of text
+        // draw in white (or lightgrey if NOT enabled) the 'text' inside the rectangle, centred and 1 line of text
     }
 }
 
@@ -375,6 +375,10 @@ void PathProducer::process(juce::Rectangle<float> fftBounds, double sampleRate)
 //------------------------------------------------------------
 void ResponseCurveComponent::timerCallback()
 {
+    // do NOT process the FFT Analysis if 'shouldShowFFTAnalysis' is false
+    // -------------------------------------------------------------------
+    if (shouldShowFFTAnalysis)
+    { 
     // get the parameters to pass into the FFT Path Producer
     auto fftBounds = getAnalysisArea().toFloat();
     auto sampleRate = audioProcessor.getSampleRate();
@@ -382,6 +386,7 @@ void ResponseCurveComponent::timerCallback()
     // run the FFT Path Producer process code
     leftPathProducer.process(fftBounds, sampleRate);
     rightPathProducer.process(fftBounds, sampleRate);
+    }
 
     if (parametersChanged.compareAndSetBool(false, true))
         // if 'parametersChanged is true set to false and run code below
@@ -516,22 +521,27 @@ void ResponseCurveComponent::paint(juce::Graphics& g)
         // this adds a line to 'responseCurve' for each x coordinate of the responseArea
     }
 
-    auto leftChannelFFTPath = leftPathProducer.getPath();
-    leftChannelFFTPath.applyTransform(AffineTransform().translation(responseArea.getX(), responseArea.getY()));
-    // moves the FFT Path to the Response Area X and Y points to anchor it at the bottom of the Response Area
+    // Do NOT paint our FFT Analysis if 'shouldShowFFTAnalysis' is false
+    // ----------------------------------------------------------------
+    if (shouldShowFFTAnalysis)
+    {
+        auto leftChannelFFTPath = leftPathProducer.getPath();
+        leftChannelFFTPath.applyTransform(AffineTransform().translation(responseArea.getX(), responseArea.getY()));
+        // moves the FFT Path to the Response Area X and Y points to anchor it at the bottom of the Response Area
 
-    g.setColour(Colours::skyblue);
-    g.strokePath(leftChannelFFTPath, PathStrokeType(1.f));
-    // draws our Left FFT Path before the Response Curve so it sits behind the Response Curve
+        g.setColour(Colours::skyblue);
+        g.strokePath(leftChannelFFTPath, PathStrokeType(1.f));
+        // draws our Left FFT Path before the Response Curve so it sits behind the Response Curve
 
-    auto rightChannelFFTPath = rightPathProducer.getPath();
-    rightChannelFFTPath.applyTransform(AffineTransform().translation(responseArea.getX(), responseArea.getY()));
-    // moves the FFT Path to the Response Area X and Y points to anchor it at the bottom of the Response Area
+        auto rightChannelFFTPath = rightPathProducer.getPath();
+        rightChannelFFTPath.applyTransform(AffineTransform().translation(responseArea.getX(), responseArea.getY()));
+        // moves the FFT Path to the Response Area X and Y points to anchor it at the bottom of the Response Area
 
-    g.setColour(Colours::lightyellow);
-    g.strokePath(rightChannelFFTPath, PathStrokeType(1.f));
-    // draws our Right FFT Path before the Response Curve so it sits behind the Response Curve
-
+        g.setColour(Colours::lightyellow);
+        g.strokePath(rightChannelFFTPath, PathStrokeType(1.f));
+        // draws our Right FFT Path before the Response Curve so it sits behind the Response Curve
+    }
+    
     g.setColour(Colours::orange);
     g.drawRoundedRectangle(getRenderArea().toFloat(), 4.f, 1.f);
     // draws an orange rectangle around the responseArea
@@ -790,6 +800,14 @@ SimpleEQAudioProcessorEditor::SimpleEQAudioProcessorEditor(SimpleEQAudioProcesso
             auto bypassed = comp->highcutBypassButton.getToggleState();
             comp->highCutFreqSlider.setEnabled(!bypassed);
             comp->highCutSlopeSlider.setEnabled(!bypassed);
+        }
+    };
+    analyzerEnabledButton.onClick = [safePtr]()
+    {
+        if (auto* comp = safePtr.getComponent())
+        {
+            auto enabled = comp->analyzerEnabledButton.getToggleState();
+            comp->responseCurveComponent.toggleAnalysisEnablement(enabled);
         }
     };
     // -----------------------------------------------------------------
